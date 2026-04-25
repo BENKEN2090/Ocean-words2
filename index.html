@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deep Words — Learn English</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --ocean: #1c4557;
+  --deep: #0e2a36;
+  --surface: #2a6070;
+  --foam: rgba(180, 225, 240, 0.85);
+  --mist: rgba(140, 195, 220, 0.55);
+  --dim: rgba(100, 165, 200, 0.35);
+}
+
+body {
+  background: var(--ocean);
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── CANVAS ── */
+canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* ── VIGNETTE & DEPTH ── */
+.depth-overlay {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 40%, transparent 0%, rgba(10,22,32,0.45) 100%),
+    linear-gradient(to bottom, rgba(30,70,95,0.2) 0%, rgba(8,18,28,0.5) 100%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* ── LAYOUT ── */
+.stage {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+/* ── SECTION ── */
+.section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 28px 48px;
+  cursor: default;
+  user-select: none;
+}
+
+.label {
+  font-family: 'Cinzel', serif;
+  font-size: 10px;
+  letter-spacing: 6px;
+  color: rgba(120, 185, 220, 0.4);
+  text-transform: uppercase;
+}
+
+/* ── WORD ── */
+.word-wrap {
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(84vw, 780px);
+}
+
+.word-row {
+  font-family: 'Cinzel', serif;
+  font-size: clamp(34px, 4.8vw, 64px);
+  font-weight: 700;
+  color: #e8f6fc;
+  letter-spacing: 7px;
+  text-shadow:
+    0 0 70px rgba(100, 195, 235, 0.4),
+    0 0 28px rgba(60, 160, 210, 0.2),
+    0 3px 20px rgba(0,0,0,0.5);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* ── IDIOM ── */
+.idiom-wrap {
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(88vw, 860px);
+}
+
+.idiom-row {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: clamp(22px, 3vw, 42px);
+  font-weight: 400;
+  font-style: italic;
+  color: rgba(190, 230, 245, 0.85);
+  letter-spacing: 1.5px;
+  text-shadow:
+    0 0 45px rgba(80, 170, 215, 0.28),
+    0 2px 14px rgba(0,0,0,0.38);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* ── LETTERS ── */
+.ch {
+  display: inline-block;
+  white-space: pre;
+  will-change: transform, opacity;
+}
+
+@keyframes arrive {
+  from { opacity: 0; transform: translateY(12px) scale(0.92); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes scatter {
+  0%   { opacity: 1; transform: translate(0,0) scale(1) rotate(0deg); }
+  100% { opacity: 0; transform: translate(var(--dx),var(--dy)) scale(0.1) rotate(var(--dr)); }
+}
+
+.ch.in  { animation: arrive 0.55s cubic-bezier(0.22,1,0.36,1) both; }
+.ch.out { animation: scatter 0.75s cubic-bezier(0.4,0,1,1) both; }
+
+/* ── DIFFICULTY ── */
+.dots {
+  display: flex;
+  gap: 7px;
+  margin-top: 4px;
+}
+
+.dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: rgba(100,165,200,0.18);
+  transition: background 0.4s, box-shadow 0.4s;
+}
+
+.dot.lit {
+  background: rgba(170,225,248,0.7);
+  box-shadow: 0 0 8px rgba(130,210,245,0.5);
+}
+
+/* ── DEFINITION ── */
+.def {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 15px;
+  font-style: italic;
+  color: rgba(120, 185, 215, 0.0);
+  max-width: 560px;
+  text-align: center;
+  line-height: 1.7;
+  transition: color 0.5s;
+  min-height: 22px;
+}
+
+.section:hover .def {
+  color: rgba(150, 210, 235, 0.7);
+}
+
+/* ── DIVIDER ── */
+.divider {
+  width: 80px;
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(140,195,220,0.18), transparent);
+  margin: 4px 0;
+}
+
+/* ── HINT ── */
+.hint {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: rgba(100,165,200,0.28);
+  z-index: 10;
+  white-space: nowrap;
+}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+<div class="depth-overlay"></div>
+
+<div class="stage">
+  <!-- WORD OF THE DAY -->
+  <div class="section" id="wSec">
+    <div class="label">Word of the Day</div>
+    <div class="word-wrap">
+      <div class="word-row" id="wRow"></div>
+    </div>
+    <div class="dots" id="wDots">
+      <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+      <div class="dot"></div><div class="dot"></div>
+    </div>
+    <div class="def" id="wDef"></div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- IDIOM OF THE DAY -->
+  <div class="section" id="iSec">
+    <div class="label">Idiom of the Day</div>
+    <div class="idiom-wrap">
+      <div class="idiom-row" id="iRow"></div>
+    </div>
+    <div class="dots" id="iDots">
+      <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+      <div class="dot"></div><div class="dot"></div>
+    </div>
+    <div class="def" id="iDef"></div>
+  </div>
+</div>
+
+<div class="hint">hover to pause · move away to release</div>
+
+<script>
+// ════════════════════════════════════════
+//  DATA
+// ════════════════════════════════════════
+const WORDS = [
+  { t:'WAVE',          d:'A ridge of water moving across the sea surface.',                  lv:1 },
+  { t:'TIDE',          d:'The regular rise and fall of the sea level.',                      lv:1 },
+  { t:'REEF',          d:'A ridge of rocks or coral near the water surface.',                lv:1 },
+  { t:'SHORE',         d:'The land along the edge of an ocean or sea.',                      lv:2 },
+  { t:'DRIFT',         d:'To be carried slowly along by a current.',                         lv:2 },
+  { t:'CORAL',         d:'A hard substance built from tiny sea creatures.',                  lv:2 },
+  { t:'LAGOON',        d:'A shallow stretch of water separated from the sea.',               lv:3 },
+  { t:'PELAGIC',       d:'Living or occurring in the open ocean.',                           lv:3 },
+  { t:'LITTORAL',      d:'Relating to the shore between high and low tides.',                lv:3 },
+  { t:'ABYSSAL',       d:'Of or relating to the deep ocean floor.',                          lv:4 },
+  { t:'TEMPESTUOUS',   d:'Violently agitated; used of stormy seas or emotions.',             lv:4 },
+  { t:'BATHYPELAGIC',  d:'Occurring at ocean depths of 1,000 to 4,000 metres.',             lv:5 },
+  { t:'THALASSOPHILE', d:'A person who loves and is drawn to the sea.',                     lv:5 },
+  { t:'CIRCUMNAVIGATE',d:'To sail completely around something, especially the Earth.',      lv:5 },
+];
+
+const IDIOMS = [
+  { t:'go with the flow',                      d:'Accept the situation without resisting.',                           lv:1 },
+  { t:'make waves',                            d:'Cause trouble or create a strong reaction.',                        lv:1 },
+  { t:'in deep water',                         d:'In a serious or difficult situation.',                              lv:2 },
+  { t:'all at sea',                            d:'Completely confused and unsure what to do.',                        lv:2 },
+  { t:'the tip of the iceberg',                d:'A small visible part of a much larger hidden problem.',             lv:3 },
+  { t:'smooth sailing',                        d:'A course of action free from trouble or difficulty.',               lv:3 },
+  { t:'throw someone a lifeline',              d:'Provide help to someone in a desperate situation.',                 lv:3 },
+  { t:'batten down the hatches',               d:'Prepare for a coming difficulty or crisis.',                        lv:4 },
+  { t:'between the devil and the deep blue sea',d:'Caught between two equally unpleasant choices.',                  lv:4 },
+  { t:'caught between Scylla and Charybdis',   d:'Trapped between two equally dangerous alternatives.',              lv:5 },
+];
+
+// ════════════════════════════════════════
+//  HELPERS
+// ════════════════════════════════════════
+function shuffle(a){ const b=[...a]; for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];} return b; }
+
+let wList = shuffle(WORDS),  wIdx = 0;
+let iList = shuffle(IDIOMS), iIdx = 0;
+
+function nextWord(){ if(++wIdx >= wList.length){ wList=shuffle(WORDS); wIdx=0; } return wList[wIdx]; }
+function nextIdiom(){ if(++iIdx >= iList.length){ iList=shuffle(IDIOMS); iIdx=0; } return iList[iIdx]; }
+
+function setDots(el, lv){
+  el.querySelectorAll('.dot').forEach((d,i) => d.classList.toggle('lit', i < lv));
+}
+
+function buildChars(row, text){
+  row.innerHTML = '';
+  [...text].forEach((ch, i) => {
+    const s = document.createElement('span');
+    s.className = 'ch in';
+    s.textContent = ch;
+    s.style.animationDelay = `${i * 0.035}s`;
+    row.appendChild(s);
+    s.addEventListener('animationend', () => s.classList.remove('in'), { once: true });
+  });
+}
+
+function dissolve(row, cb){
+  const spans = [...row.querySelectorAll('.ch')];
+  if(!spans.length){ cb(); return; }
+  spans.forEach(s => {
+    s.classList.remove('in');
+    const dx = (Math.random()-0.5)*90;
+    const dy = (Math.random()-0.7)*70;   // bias upward
+    const dr = (Math.random()-0.5)*60 + 'deg';
+    s.style.setProperty('--dx', dx+'px');
+    s.style.setProperty('--dy', dy+'px');
+    s.style.setProperty('--dr', dr);
+    s.style.animationDelay = Math.random()*0.15+'s';
+    s.classList.add('out');
+  });
+  setTimeout(cb, 850);
+}
+
+// ════════════════════════════════════════
+//  STATE MACHINE
+// ════════════════════════════════════════
+// state: 'idle' | 'hovered' | 'dissolving'
+function makeCycler(sectionId, rowId, dotsId, defId, getNext, interval){
+  const sec  = document.getElementById(sectionId);
+  const row  = document.getElementById(rowId);
+  const dots = document.getElementById(dotsId);
+  const def  = document.getElementById(defId);
+  let state  = 'idle';
+  let timer  = null;
+
+  function show(item){
+    def.textContent = item.d;
+    setDots(dots, item.lv);
+    buildChars(row, item.t);
+  }
+
+  function doDissolve(nextItem){
+    state = 'dissolving';
+    clearTimeout(timer);
+    dissolve(row, () => {
+      show(nextItem);
+      state = 'idle';
+      timer = setTimeout(autoAdvance, interval);
+    });
+  }
+
+  function autoAdvance(){
+    if(state !== 'idle') return;
+    doDissolve(getNext());
+  }
+
+  sec.addEventListener('mouseenter', () => {
+    if(state === 'idle'){
+      state = 'hovered';
+      clearTimeout(timer);
+    }
+  });
+
+  sec.addEventListener('mouseleave', () => {
+    if(state === 'hovered'){
+      doDissolve(getNext());
+    }
+  });
+
+  // Bootstrap
+  show(wList[wIdx]); // first item already set outside, but we call show here
+  timer = setTimeout(autoAdvance, interval);
+  return { show, doDissolve };
+}
+
+// Init first items before cyclers start
+const wFirst = wList[0];
+const iFirst = iList[0];
+
+// Show initial word
+(function(){
+  const row = document.getElementById('wRow');
+  const dots = document.getElementById('wDots');
+  const def  = document.getElementById('wDef');
+  def.textContent = wFirst.d;
+  setDots(dots, wFirst.lv);
+  buildChars(row, wFirst.t);
+})();
+(function(){
+  const row  = document.getElementById('iRow');
+  const dots = document.getElementById('iDots');
+  const def  = document.getElementById('iDef');
+  def.textContent = iFirst.d;
+  setDots(dots, iFirst.lv);
+  buildChars(row, iFirst.t);
+})();
+
+// Start cyclers (they will auto-advance on timer)
+makeCycler('wSec','wRow','wDots','wDef', nextWord,  6000);
+makeCycler('iSec','iRow','iDots','iDef', nextIdiom, 7500);
+
+// ════════════════════════════════════════
+//  CANVAS — FISH + BUBBLES + LIGHT RAYS
+// ════════════════════════════════════════
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+
+function resize(){
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Light rays ──
+const RAY_COUNT = 6;
+const rays = Array.from({length: RAY_COUNT}, (_,i) => ({
+  x: (0.1 + Math.random()*0.8) * window.innerWidth,
+  angle: -0.3 + Math.random()*0.6,
+  width: 40 + Math.random()*80,
+  alpha: 0.018 + Math.random()*0.022,
+  speed: 0.0003 + Math.random()*0.0003,
+  phase: Math.random()*Math.PI*2,
+}));
+
+function drawRays(t){
+  rays.forEach(r => {
+    const a = r.alpha * (0.6 + 0.4*Math.sin(t*r.speed + r.phase));
+    const x = r.x + Math.sin(t*0.00015 + r.phase)*60;
+    const grad = ctx.createLinearGradient(x, 0, x, canvas.height*0.75);
+    grad.addColorStop(0, `rgba(120,200,240,${a})`);
+    grad.addColorStop(1, `rgba(120,200,240,0)`);
+    ctx.save();
+    ctx.translate(x, 0);
+    ctx.rotate(r.angle);
+    ctx.fillStyle = grad;
+    ctx.fillRect(-r.width/2, 0, r.width, canvas.height*0.85);
+    ctx.restore();
+  });
+}
+
+// ── Bubbles ──
+class Bubble {
+  constructor(){ this.reset(true); }
+  reset(init=false){
+    this.x = Math.random() * canvas.width;
+    this.y = init ? Math.random()*canvas.height : canvas.height + 8;
+    this.r = 0.8 + Math.random()*3.2;
+    this.vy = 0.25 + Math.random()*0.65;
+    this.vx = (Math.random()-0.5)*0.3;
+    this.phase = Math.random()*Math.PI*2;
+    this.alpha = 0.04 + Math.random()*0.13;
+  }
+  update(){
+    this.y -= this.vy;
+    this.x += this.vx + Math.sin(this.phase+=0.025)*0.4;
+    if(this.y < -10) this.reset();
+  }
+  draw(){
+    const fa = edgeFade(this.x, this.y, 0.09);
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r, 0, Math.PI*2);
+    ctx.strokeStyle = `rgba(160,215,240,${this.alpha*fa})`;
+    ctx.lineWidth = 0.6;
+    ctx.stroke();
+  }
+}
+
+// ── Edge fade helper ──
+function edgeFade(x, y, margin=0.12){
+  const W = canvas.width, H = canvas.height;
+  const mx = W*margin, my = H*margin;
+  const fx = Math.min(x/mx, (W-x)/mx, 1);
+  const fy = Math.min(y/my, (H-y)/my, 1);
+  return Math.max(0, Math.min(fx, fy));
+}
+
+// ── Fish — clean bezier silhouette ──
+class Fish {
+  constructor(){ this.spawn(); }
+
+  spawn(){
+    const W = canvas.width, H = canvas.height;
+    const side = Math.floor(Math.random()*4);
+    if(side===0){ this.x=-120; this.y=H*0.1+Math.random()*H*0.8; this.angle=(Math.random()-0.4)*0.65; }
+    else if(side===1){ this.x=W+120; this.y=H*0.1+Math.random()*H*0.8; this.angle=Math.PI+(Math.random()-0.5)*0.65; }
+    else if(side===2){ this.x=W*0.1+Math.random()*W*0.8; this.y=-120; this.angle=Math.PI*0.5+(Math.random()-0.5)*0.6; }
+    else{ this.x=W*0.1+Math.random()*W*0.8; this.y=H+120; this.angle=-Math.PI*0.5+(Math.random()-0.5)*0.6; }
+
+    this.baseAngle = this.angle;
+    this.turnPhase = Math.random()*Math.PI*2;
+    this.turnRate  = 0.005 + Math.random()*0.005;
+    this.turnAmt   = 0.16  + Math.random()*0.20;
+    this.baseSpeed = 0.36  + Math.random()*0.80;
+    this.speedPhase= Math.random()*Math.PI*2;
+
+    this.size   = 30 + Math.random()*55;
+    this.phase  = Math.random()*Math.PI*2;
+    this.wobbleS= 0.022 + Math.random()*0.028;
+    this.wobbleA= 0.06  + Math.random()*0.07;
+    this.maxA   = 0.25  + Math.random()*0.20;
+    const v     = Math.floor(Math.random()*18);
+    this.col    = [6+v, 16+v, 26+v];
+    this.alive  = true;
+  }
+
+  draw(){
+    const fa = edgeFade(this.x, this.y, 0.14) * this.maxA;
+    if(fa < 0.005) return;
+    const [r,g,b] = this.col;
+    const s = this.size;
+    // tail flex — only the back half sways
+    const flex = Math.sin(this.phase) * this.wobbleA;
+
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.angle);
+
+    const fill = `rgba(${r},${g},${b},${fa})`;
+
+    // ── Body + tail as one smooth closed path ──
+    // Fish faces right (+x = nose). Tail is on the left (-x).
+    ctx.beginPath();
+    // Nose
+    ctx.moveTo(s * 0.95, 0);
+    // Top back — belly widens then tapers to tail root
+    ctx.bezierCurveTo( s*0.55, -s*0.30,  -s*0.40, -s*0.28,  -s*0.72,  s*0.04 + flex*s*0.18);
+    // Top tail lobe — sweeps out and back
+    ctx.bezierCurveTo(-s*0.85, -s*0.05 + flex*s*0.28, -s*0.90, -s*0.38 + flex*s*0.55, -s*1.32, -s*0.44 + flex*s*0.80);
+    // Tail notch — pinch inward
+    ctx.bezierCurveTo(-s*1.08, -s*0.18 + flex*s*0.35, -s*1.02,  flex*s*0.08, -s*0.88,  flex*s*0.10);
+    // Bottom tail lobe
+    ctx.bezierCurveTo(-s*1.02, -flex*s*0.08, -s*1.08,  s*0.18 - flex*s*0.35, -s*1.32,  s*0.44 - flex*s*0.80);
+    // Back along bottom to tail root
+    ctx.bezierCurveTo(-s*0.90,  s*0.38 - flex*s*0.55, -s*0.85,  s*0.05 - flex*s*0.28, -s*0.72, -s*0.04 - flex*s*0.18);
+    // Bottom belly back to nose
+    ctx.bezierCurveTo(-s*0.40,  s*0.28,   s*0.55,  s*0.30,   s*0.95,  0);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+
+    // ── Dorsal fin — single smooth triangle-ish arc ──
+    ctx.beginPath();
+    ctx.moveTo( s*0.10, -s*0.27);
+    ctx.bezierCurveTo( s*0.22, -s*0.58,  -s*0.18, -s*0.60,  -s*0.42, -s*0.27);
+    ctx.closePath();
+    ctx.fillStyle = `rgba(${r},${g},${b},${fa*0.55})`;
+    ctx.fill();
+
+    // ── Pectoral fin — subtle teardrop off the belly ──
+    ctx.beginPath();
+    ctx.moveTo( s*0.30,  s*0.22);
+    ctx.bezierCurveTo( s*0.50,  s*0.50,   s*0.05,  s*0.55,   s*0.05,  s*0.27);
+    ctx.closePath();
+    ctx.fillStyle = `rgba(${r},${g},${b},${fa*0.45})`;
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  update(){
+    // Lazy sinusoidal steering — fish curves gently as it swims
+    this.turnPhase += this.turnRate;
+    this.angle = this.baseAngle + Math.sin(this.turnPhase) * this.turnAmt;
+
+    // Subtle speed pulse — like a fish gliding then pushing
+    this.speedPhase += 0.011;
+    const spd = this.baseSpeed * (0.80 + 0.20 * Math.sin(this.speedPhase));
+
+    this.phase += this.wobbleS;
+    this.x += Math.cos(this.angle) * spd;
+    this.y += Math.sin(this.angle) * spd;
+    const W=canvas.width, H=canvas.height;
+    if(this.x<-240||this.x>W+240||this.y<-240||this.y>H+240) this.alive=false;
+  }
+}
+
+const FISH_COUNT = 14;
+const fishes  = Array.from({length:FISH_COUNT},()=>new Fish());
+const bubbles = Array.from({length:38},()=>new Bubble());
+
+function animate(t){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // Light rays
+  drawRays(t);
+
+  // Bubbles
+  bubbles.forEach(b=>{ b.update(); b.draw(); });
+
+  // Fish
+  for(let i=0;i<fishes.length;i++){
+    fishes[i].update();
+    fishes[i].draw();
+    if(!fishes[i].alive) fishes[i]=new Fish();
+  }
+
+  requestAnimationFrame(animate);
+}
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>
